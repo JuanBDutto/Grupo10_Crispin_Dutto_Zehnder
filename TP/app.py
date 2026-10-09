@@ -29,6 +29,41 @@ class SegundoCerebro:
         # Configurar la tarea programada
         schedule.every(self.config['intervalo_minutos']).minutes.do(self.ejecutar_indexacion)
         self.iniciar_hilo_background()
+        
+    def indexar_txt_por_fragmentos(self, writer, ruta, archivo, mtime_actual, lineas_por_chunk=5000):
+        """Lee un archivo gigante línea por línea y lo guarda en bloques ligeros."""
+        try:
+            # errors='ignore' evita que el programa falle si hay caracteres extraños
+            with open(ruta, 'r', encoding='utf-8', errors='ignore') as f:
+                chunk = []
+                numero_parte = 1
+                
+                for linea in f:
+                    chunk.append(linea)
+                    
+                    if len(chunk) >= lineas_por_chunk:
+                        contenido = "".join(chunk)
+                        # El truco: Hacemos la ruta única agregando el número de parte
+                        writer.update_document(
+                            titulo=f"{archivo} (Parte {numero_parte})", 
+                            ruta=f"{ruta}?parte={numero_parte}",  
+                            contenido=contenido,
+                            mtime=mtime_actual
+                        )
+                        chunk = [] # Vaciamos la memoria RAM
+                        numero_parte += 1
+                        
+                # Guardamos lo que haya sobrado al final del archivo
+                if chunk:
+                    contenido = "".join(chunk)
+                    writer.update_document(
+                        titulo=f"{archivo} (Parte {numero_parte})", 
+                        ruta=f"{ruta}?parte={numero_parte}", 
+                        contenido=contenido,
+                        mtime=mtime_actual
+                    )
+        except Exception as e:
+            print(f"Error procesando {archivo}: {e}")
 
     def cargar_config(self, path):
         with open(path, 'r', encoding='utf-8') as f:
@@ -78,24 +113,28 @@ class SegundoCerebro:
 
 # --- LÓGICA DE INDEXACIÓN ---
     def ejecutar_indexacion(self):
-        # 1. Recopilamos qué archivos ya están en Whoosh y su fecha de modificación
         archivos_conocidos = {}
         with self.indice.searcher() as searcher:
             for campos in searcher.all_stored_fields():
                 ruta_indexada = campos.get('ruta')
-                # Guardamos la ruta y su mtime (si no tiene, asumimos 0)
-                archivos_conocidos[ruta_indexada] = campos.get('mtime', 0)
+                # Obtenemos la ruta real (le quitamos el "?parte=...")
+                ruta_real = ruta_indexada.split("?parte=")[0]
+                archivos_conocidos[ruta_real] = campos.get('mtime', 0)
 
         writer = self.indice.writer()
         exts_codigo = self.config.get("extensiones_codigo", [])
         
         # --- Fase de Limpieza ---
-        for ruta_indexada in archivos_conocidos.keys():
-            if not os.path.exists(ruta_indexada):
-                writer.delete_by_term('ruta', ruta_indexada)
-                print(f"🗑️ Limpiando archivo borrado/movido: {ruta_indexada}")
+        with self.indice.searcher() as searcher:
+            for campos in searcher.all_stored_fields():
+                ruta_indexada = campos.get('ruta')
+                ruta_real = ruta_indexada.split("?parte=")[0]
+                
+                if not os.path.exists(ruta_real):
+                    writer.delete_by_term('ruta', ruta_indexada)
+                    print(f"🗑️ Limpiando: {ruta_indexada}")
 
-        # --- Fase de Indexación Inteligente ---
+        # --- Fase de Indexación ---
         for carpeta in self.config["directorios"]:
             if not os.path.exists(carpeta): continue
             
@@ -104,28 +143,28 @@ class SegundoCerebro:
                     ruta = os.path.join(raiz, archivo)
                     ext = os.path.splitext(archivo)[1].lower()
                     
-                    # Obtenemos la fecha de última modificación del archivo en el disco
                     mtime_actual = os.path.getmtime(ruta)
-                    
-                    # MAGIA AQUÍ: Si el archivo ya está en el índice y no fue modificado, LO SALTEAMOS
                     if ruta in archivos_conocidos and mtime_actual <= archivos_conocidos[ruta]:
                         continue 
                     
-                    contenido = ""
-                    if ext == '.pdf': contenido = self.extraer_pdf(ruta)
-                    elif ext == '.docx': contenido = self.extraer_docx(ruta)
+                    # --- NUEVO FLUJO ---
+                    if ext == '.pdf': 
+                        contenido = self.extraer_pdf(ruta)
+                    elif ext == '.docx': 
+                        contenido = self.extraer_docx(ruta)
                     elif ext == '.txt' or ext in exts_codigo: 
-                        contenido = self.extraer_texto_plano(ruta)
-                    else: continue
+                        # Delegamos los TXT y Código a nuestra nueva función que usa poca RAM
+                        self.indexar_txt_por_fragmentos(writer, ruta, archivo, mtime_actual)
+                        print(f"✅ Indexado por fragmentos: {archivo}")
+                        continue # Pasamos al siguiente archivo
+                    else:
+                        continue
 
                     if contenido.strip():
                         writer.update_document(
-                            titulo=archivo, 
-                            ruta=ruta, 
-                            contenido=contenido,
-                            mtime=mtime_actual # <-- Guardamos la nueva marca de tiempo
+                            titulo=archivo, ruta=ruta, contenido=contenido, mtime=mtime_actual
                         )
-                        print(f"✅ Indexado/Actualizado: {archivo}")
+                        print(f"✅ Indexado: {archivo}")
                         
         writer.commit()
 
@@ -154,14 +193,16 @@ class SegundoCerebro:
         return resultados
 
     def abrir_archivo(self, ruta):
-        """Abre el archivo con el programa predeterminado del sistema operativo"""
-        print(f"\nAbriendo: {ruta} ...")
+        # Limpiamos el sufijo del fragmento para recuperar la ruta real
+        ruta_real = ruta.split("?parte=")[0]
+        
+        print(f"\nAbriendo: {ruta_real} ...")
         if platform.system() == 'Windows':
-            os.startfile(ruta)
-        elif platform.system() == 'Darwin': # macOS
-            subprocess.call(('open', ruta))
-        else: # Linux
-            subprocess.call(('xdg-open', ruta))
+            os.startfile(ruta_real)
+        elif platform.system() == 'Darwin':
+            subprocess.call(('open', ruta_real))
+        else:
+            subprocess.call(('xdg-open', ruta_real))
 
     def iniciar_cli(self):
         print("\n--- SEGUNDO CEREBRO ---")
