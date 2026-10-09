@@ -1,0 +1,22 @@
+Entornos virtuales (generados por uv o python nativo)
+
+.venv/
+venv/
+env/
+
+Archivos temporales y compilados de Python
+
+pycache/
+*.pyc
+*.pyo
+*.pyd
+
+Directorio del índice de Whoosh (Evita subir la base de datos pesada al repo)
+
+TP/indice_cerebro/
+indice_cerebro/
+
+Archivos de sistema operativo
+
+.DS_Store
+Thumbs.db
