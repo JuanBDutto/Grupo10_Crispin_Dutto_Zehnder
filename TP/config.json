@@ -1,0 +1,7 @@
+{
+    "directorios": [
+       "C:/Users/Usuario/Desktop/Pruebas Pyrhon"
+    ],
+    "intervalo_minutos": 5,
+    "extensiones_codigo": [".py", ".js", ".html", ".css", ".cpp", ".json"]
+}
