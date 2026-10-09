@@ -14,6 +14,7 @@ from whoosh.fields import Schema, TEXT, ID
 from whoosh.qparser import QueryParser
 from whoosh.analysis import LanguageAnalyzer
 from whoosh.analysis import RegexTokenizer, LowercaseFilter, StopFilter, StemFilter
+from whoosh.fields import Schema, TEXT, ID, STORED
 
 class SegundoCerebro:
     def __init__(self, config_path="config.json"):
@@ -34,21 +35,20 @@ class SegundoCerebro:
             self.config = json.load(f)
 
     def _inicializar_whoosh(self):
-        # Esta expresión regular solo agrupa letras y números. 
-        # Al ignorar el guion bajo (_), rompe variables como "funcion_complicada" en dos.
         analizador_codigo = (
             RegexTokenizer(r"[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ]+") | 
             LowercaseFilter() | 
             StopFilter(lang="es") | 
             StemFilter(lang="es")
         )
-        
+
         esquema = Schema(
             titulo=TEXT(stored=True),
             ruta=ID(stored=True, unique=True), 
-            contenido=TEXT(analyzer=analizador_codigo, stored=True)
+            contenido=TEXT(analyzer=analizador_codigo, stored=True),
+            mtime=STORED() # <-- NUEVO: Guardará la marca de tiempo
         )
-        
+    
         if not os.path.exists(self.dir_indice):
             os.mkdir(self.dir_indice)
             self.indice = create_in(self.dir_indice, esquema)
@@ -78,30 +78,40 @@ class SegundoCerebro:
 
 # --- LÓGICA DE INDEXACIÓN ---
     def ejecutar_indexacion(self):
+        # 1. Recopilamos qué archivos ya están en Whoosh y su fecha de modificación
+        archivos_conocidos = {}
+        with self.indice.searcher() as searcher:
+            for campos in searcher.all_stored_fields():
+                ruta_indexada = campos.get('ruta')
+                # Guardamos la ruta y su mtime (si no tiene, asumimos 0)
+                archivos_conocidos[ruta_indexada] = campos.get('mtime', 0)
+
         writer = self.indice.writer()
         exts_codigo = self.config.get("extensiones_codigo", [])
         
-        # --- NUEVO: Fase de Limpieza (Cleanup) ---
-        # Revisamos todos los documentos que Whoosh tiene guardados actualmente
-        with self.indice.searcher() as searcher:
-            for campos in searcher.all_stored_fields():
-                ruta_indexada = campos['ruta']
-                # Si el archivo ya no existe físicamente en esa ruta (fue borrado o movido)
-                if not os.path.exists(ruta_indexada):
-                    # Lo eliminamos del índice usando su ruta única
-                    writer.delete_by_term('ruta', ruta_indexada)
-                    print(f"🗑️ Limpiando archivo movido/borrado: {ruta_indexada}")
+        # --- Fase de Limpieza ---
+        for ruta_indexada in archivos_conocidos.keys():
+            if not os.path.exists(ruta_indexada):
+                writer.delete_by_term('ruta', ruta_indexada)
+                print(f"🗑️ Limpiando archivo borrado/movido: {ruta_indexada}")
 
-        # --- Fase de Inserción / Actualización (Igual que antes) ---
+        # --- Fase de Indexación Inteligente ---
         for carpeta in self.config["directorios"]:
             if not os.path.exists(carpeta): continue
             
-            for raiz, _, archivos in os.walk(carpeta): # Recorre subcarpetas también
+            for raiz, _, archivos in os.walk(carpeta):
                 for archivo in archivos:
                     ruta = os.path.join(raiz, archivo)
                     ext = os.path.splitext(archivo)[1].lower()
+                    
+                    # Obtenemos la fecha de última modificación del archivo en el disco
+                    mtime_actual = os.path.getmtime(ruta)
+                    
+                    # MAGIA AQUÍ: Si el archivo ya está en el índice y no fue modificado, LO SALTEAMOS
+                    if ruta in archivos_conocidos and mtime_actual <= archivos_conocidos[ruta]:
+                        continue 
+                    
                     contenido = ""
-
                     if ext == '.pdf': contenido = self.extraer_pdf(ruta)
                     elif ext == '.docx': contenido = self.extraer_docx(ruta)
                     elif ext == '.txt' or ext in exts_codigo: 
@@ -109,10 +119,16 @@ class SegundoCerebro:
                     else: continue
 
                     if contenido.strip():
-                        writer.update_document(titulo=archivo, ruta=ruta, contenido=contenido)
+                        writer.update_document(
+                            titulo=archivo, 
+                            ruta=ruta, 
+                            contenido=contenido,
+                            mtime=mtime_actual # <-- Guardamos la nueva marca de tiempo
+                        )
+                        print(f"✅ Indexado/Actualizado: {archivo}")
                         
         writer.commit()
-        print("✅ Indexación completada.")
+
     def iniciar_hilo_background(self):
         """Ejecuta el planificador en un hilo separado para no bloquear la consola"""
         def correr_schedule():
