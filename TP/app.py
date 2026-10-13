@@ -81,14 +81,19 @@ class SegundoCerebro:
             titulo=TEXT(stored=True),
             ruta=ID(stored=True, unique=True), 
             contenido=TEXT(analyzer=analizador_codigo, stored=True),
-            mtime=STORED() # <-- NUEVO: Guardará la marca de tiempo
+            mtime=STORED() 
         )
     
+        # 1. Si la carpeta no existe físicamente, la creamos
         if not os.path.exists(self.dir_indice):
             os.mkdir(self.dir_indice)
-            self.indice = create_in(self.dir_indice, esquema)
-        else:
+            
+        # 2. Le preguntamos a Whoosh si hay un índice válido adentro
+        if exists_in(self.dir_indice):
             self.indice = open_dir(self.dir_indice)
+        else:
+            # Si la carpeta estaba vacía, crea los archivos del índice desde cero
+            self.indice = create_in(self.dir_indice, esquema)
 
     # --- EXTRACTORES DE TEXTO ---
     def extraer_pdf(self, ruta):
