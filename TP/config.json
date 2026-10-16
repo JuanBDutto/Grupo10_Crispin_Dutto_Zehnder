@@ -1,7 +1,25 @@
 {
     "directorios": [
-       "C:/Users/Usuario/OneDrive/Desktop/Prueba"
+        "C:/Users/Usuario/OneDrive/Desktop/Prueba",
+        "C:/Users/Usuario/OneDrive/Desktop/Prueba 2",
+        "C:/Users/Usuario/OneDrive/Desktop/TP Promoci\u00f3n - Ingenieria de Software II - Juan B. Dutto"
     ],
     "intervalo_minutos": 1,
-    "extensiones_codigo": [".py", ".js", ".html", ".css", ".cpp", ".json"]
+    "extensiones_codigo": [
+        ".py",
+        ".js",
+        ".html",
+        ".css",
+        ".cpp",
+        ".json"
+    ],
+    "apps_predeterminadas": {
+        ".py": "C:/Users/Usuario/AppData/Local/Programs/Microsoft VS Code/Code.exe",
+        ".html": "C:/Users/Usuario/AppData/Local/Programs/Microsoft VS Code/Code.exe",
+        ".js": "C:/Users/Usuario/AppData/Local/Programs/Microsoft VS Code/Code.exe",
+        ".css": "C:/Users/Usuario/AppData/Local/Programs/Microsoft VS Code/Code.exe",
+        ".cpp": "C:/Users/Usuario/AppData/Local/Programs/Microsoft VS Code/Code.exe",
+        ".json": "C:/Users/Usuario/AppData/Local/Programs/Microsoft VS Code/Code.exe",
+        ".pdf": "C:/Program Files/Adobe/Acrobat DC/Acrobat/Acrobat.exe"
+    }
 }
