@@ -213,10 +213,22 @@ class SegundoCerebro:
         hilo = threading.Thread(target=correr_schedule, daemon=True)
         hilo.start()
 
+    def _preparar_consulta(self, texto):
+        operadores = {"AND", "OR", "NOT"}
+        terminos = []
+        for t in texto.strip().split():
+            if t in operadores or any(c in t for c in '*?"():'):
+                terminos.append(t)             
+            else:
+                terminos.append(t.lower() + "*")
+        return " ".join(terminos)
+
     def buscar(self, query_str, filtro_ext="Todos"):
         parser = QueryParser("contenido", schema=self.indice.schema)
-        try: consulta = parser.parse(query_str)
-        except: return []
+        try:
+            consulta = parser.parse(self._preparar_consulta(query_str))
+        except Exception:
+            return []
 
         resultados = []
         with self.indice.searcher() as searcher:
