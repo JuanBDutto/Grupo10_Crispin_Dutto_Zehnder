@@ -2,9 +2,110 @@ import sys
 import os
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QLineEdit, QPushButton, QComboBox, 
-                             QLabel, QScrollArea, QFrame, QMessageBox)
+                             QLabel, QScrollArea, QFrame, QMessageBox, QDialog,
+                             QTableWidget, QTableWidgetItem, QFileDialog,
+                             QInputDialog, QAbstractItemView)
 from PyQt6.QtCore import Qt
 from motor import SegundoCerebro
+
+
+class DialogoApps(QDialog):
+    def __init__(self, motor, parent=None):
+        super().__init__(parent)
+        self.motor = motor
+        self.setWindowTitle("Aplicaciones Predeterminadas")
+        self.resize(650, 380)
+
+        layout = QVBoxLayout(self)
+
+        self.tabla = QTableWidget(0, 2)
+        self.tabla.setHorizontalHeaderLabels(["Extensión", "Programa"])
+        self.tabla.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.tabla.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tabla.horizontalHeader().setStretchLastSection(True)
+        layout.addWidget(self.tabla)
+
+        layout_botones = QHBoxLayout()
+        self.btn_agregar = QPushButton("Agregar")
+        self.btn_agregar.clicked.connect(self.agregar_app)
+        layout_botones.addWidget(self.btn_agregar)
+
+        self.btn_cambiar = QPushButton("Cambiar programa")
+        self.btn_cambiar.clicked.connect(self.cambiar_programa)
+        layout_botones.addWidget(self.btn_cambiar)
+
+        self.btn_quitar = QPushButton("Quitar")
+        self.btn_quitar.clicked.connect(self.quitar_app)
+        layout_botones.addWidget(self.btn_quitar)
+
+        layout_botones.addStretch()
+
+        self.btn_cerrar = QPushButton("Cerrar")
+        self.btn_cerrar.clicked.connect(self.accept)
+        layout_botones.addWidget(self.btn_cerrar)
+
+        layout.addLayout(layout_botones)
+        self.cargar_tabla()
+
+    def cargar_tabla(self):
+        apps = self.motor.obtener_apps_predeterminadas()
+        self.tabla.setRowCount(0)
+        for fila, (ext, prog) in enumerate(apps.items()):
+            self.tabla.insertRow(fila)
+            self.tabla.setItem(fila, 0, QTableWidgetItem(ext))
+            self.tabla.setItem(fila, 1, QTableWidgetItem(prog))
+
+    def elegir_ejecutable(self, titulo="Seleccionar ejecutable"):
+        ruta, _ = QFileDialog.getOpenFileName(self, titulo)
+        return ruta
+
+    def agregar_app(self):
+        texto_ext, ok = QInputDialog.getText(
+            self, "Agregar Extensión", "Extensión(es) (ej: .py o .py, .js):"
+        )
+        if not ok or not texto_ext.strip():
+            return
+
+        programa = self.elegir_ejecutable("Seleccionar programa para la extensión")
+        if not programa:
+            return
+
+        exito, mensaje = self.motor.asignar_app_a_extensiones(texto_ext, programa)
+        if exito:
+            self.cargar_tabla()
+        else:
+            QMessageBox.warning(self, "Error", mensaje)
+
+    def cambiar_programa(self):
+        filas = self.tabla.selectionModel().selectedRows()
+        if not filas:
+            QMessageBox.warning(self, "Aviso", "Selecciona al menos una extensión de la tabla.")
+            return
+
+        extensiones = [self.tabla.item(f.row(), 0).text() for f in filas]
+        programa = self.elegir_ejecutable(f"Seleccionar programa para {', '.join(extensiones)}")
+        if not programa:
+            return
+
+        exito, mensaje = self.motor.asignar_app_a_extensiones(extensiones, programa)
+        if exito:
+            self.cargar_tabla()
+        else:
+            QMessageBox.warning(self, "Error", mensaje)
+
+    def quitar_app(self):
+        filas = self.tabla.selectionModel().selectedRows()
+        if not filas:
+            QMessageBox.warning(self, "Aviso", "Selecciona una extensión de la tabla para quitar.")
+            return
+
+        for f in filas:
+            ext = self.tabla.item(f.row(), 0).text()
+            exito, mensaje = self.motor.quitar_app_de_extension(ext)
+            if not exito:
+                QMessageBox.warning(self, "Error", mensaje)
+        self.cargar_tabla()
+
 
 class InterfazCerebro(QMainWindow):
     def __init__(self):
@@ -38,6 +139,10 @@ class InterfazCerebro(QMainWindow):
         self.btn_reindexar = QPushButton("↻ Reindexar Todo")
         self.btn_reindexar.clicked.connect(self.reindexar)
         layout_busqueda.addWidget(self.btn_reindexar)
+
+        self.btn_apps = QPushButton("⚙ Aplicaciones")
+        self.btn_apps.clicked.connect(self.abrir_dialogo_apps)
+        layout_busqueda.addWidget(self.btn_apps)
 
         layout_principal.addLayout(layout_busqueda)
 
@@ -107,6 +212,26 @@ class InterfazCerebro(QMainWindow):
         self.btn_reindexar.setText("↻ Reindexar Todo")
         self.btn_reindexar.setEnabled(True)
 
+    def abrir_dialogo_apps(self):
+        dialogo = DialogoApps(self.motor, self)
+        dialogo.exec()
+
+    def abrir_archivo_con(self, ruta):
+        ruta_real = ruta.split("?parte=")[0]
+        ext = os.path.splitext(ruta_real)[1].lower()
+        programa, _ = QFileDialog.getOpenFileName(
+            self, f"Seleccionar programa para {ext or 'el archivo'}"
+        )
+        if not programa:
+            return
+
+        exito, mensaje = self.motor.asignar_app_a_extensiones([ext], programa)
+        if not exito:
+            QMessageBox.warning(self, "Error", mensaje)
+            return
+
+        self.motor.abrir_archivo(ruta)
+
     def limpiar_resultados(self):
         while self.layout_resultados.count():
             item = self.layout_resultados.takeAt(0)
@@ -154,6 +279,10 @@ class InterfazCerebro(QMainWindow):
             btn_abrir = QPushButton("Abrir archivo")
             btn_abrir.clicked.connect(lambda checked, r=res['ruta']: self.motor.abrir_archivo(r))
             layout_item.addWidget(btn_abrir)
+
+            btn_abrir_con = QPushButton("Abrir con…")
+            btn_abrir_con.clicked.connect(lambda checked, r=res['ruta']: self.abrir_archivo_con(r))
+            layout_item.addWidget(btn_abrir_con)
             
             self.layout_resultados.addWidget(frame)
 
