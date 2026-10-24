@@ -1,6 +1,7 @@
 import os
 import json
 import time
+import tempfile
 import threading
 import subprocess
 import platform
@@ -16,6 +17,7 @@ from whoosh.analysis import RegexTokenizer, LowercaseFilter, StopFilter, StemFil
 
 class SegundoCerebro:
     def __init__(self, config_path="config.json"):
+        self._lock_config = threading.Lock()
         self.cargar_config(config_path)
         self.dir_indice = "indice_cerebro"
         
@@ -26,8 +28,22 @@ class SegundoCerebro:
         self.iniciar_hilo_background()
         
     def cargar_config(self, path):
-        with open(path, 'r', encoding='utf-8') as f:
+        self.config_path = os.path.abspath(path)
+        with open(self.config_path, 'r', encoding='utf-8') as f:
             self.config = json.load(f)
+
+    def guardar_config(self):
+        with self._lock_config:
+            directorio = os.path.dirname(self.config_path) or "."
+            fd, temp_path = tempfile.mkstemp(dir=directorio, suffix=".tmp", text=True)
+            try:
+                with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                    json.dump(self.config, f, indent=4, ensure_ascii=False)
+                os.replace(temp_path, self.config_path)
+            except Exception:
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+                raise
 
     def _inicializar_whoosh(self):
         analizador_codigo = (
@@ -139,11 +155,55 @@ class SegundoCerebro:
             
         if nueva_ruta not in self.config.get("directorios", []):
             self.config.setdefault("directorios", []).append(nueva_ruta)
-            with open("config.json", "w", encoding="utf-8") as f:
-                json.dump(self.config, f, indent=4)
+            self.guardar_config()
                 
         self.ejecutar_indexacion()
         return True, f"Ruta indexada y guardada exitosamente:\n{nueva_ruta}"
+
+    def obtener_apps_predeterminadas(self):
+        return dict(self.config.get("apps_predeterminadas", {}))
+
+    def asignar_app_a_extensiones(self, extensiones, programa):
+        if isinstance(extensiones, str):
+            lista_ext = [e for e in extensiones.replace(",", " ").split() if e.strip()]
+        else:
+            lista_ext = list(extensiones)
+
+        exts_normalizadas = []
+        for ext in lista_ext:
+            ext_limpia = ext.strip().lower()
+            if not ext_limpia or ext_limpia == ".":
+                continue
+            if not ext_limpia.startswith("."):
+                ext_limpia = "." + ext_limpia
+            exts_normalizadas.append(ext_limpia)
+
+        if not exts_normalizadas:
+            return False, "Debes indicar al menos una extensión válida."
+
+        programa_limpio = (programa or "").strip().replace("\\", "/")
+        if not programa_limpio or not os.path.isfile(programa_limpio):
+            return False, f"El ejecutable no existe:\n{programa_limpio}"
+
+        apps = self.config.setdefault("apps_predeterminadas", {})
+        for ext in exts_normalizadas:
+            apps[ext] = programa_limpio
+
+        self.guardar_config()
+        return True, f"Programa asignado a {', '.join(exts_normalizadas)}."
+
+    def quitar_app_de_extension(self, extension):
+        ext_limpia = (extension or "").strip().lower()
+        if ext_limpia and not ext_limpia.startswith("."):
+            ext_limpia = "." + ext_limpia
+
+        apps = self.config.get("apps_predeterminadas", {})
+        if ext_limpia not in apps:
+            return False, f"La extensión '{ext_limpia}' no tiene una aplicación asignada."
+
+        del apps[ext_limpia]
+        self.guardar_config()
+        return True, f"Se quitó la aplicación predeterminada para '{ext_limpia}'."
 
     def iniciar_hilo_background(self):
         def correr_schedule():
