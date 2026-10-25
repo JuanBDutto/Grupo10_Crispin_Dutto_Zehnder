@@ -16,6 +16,32 @@ def iniciar_cli():
         if not comando: 
             continue
 
+        # --- MODO BÚSQUEDA "buscar " ---
+        if comando.lower().startswith("buscar "):
+            termino_busqueda = comando[7:]  # Recorta "buscar "
+            resultados = motor.buscar(termino_busqueda)
+            print(termino_busqueda)
+            if len(resultados) == 0:
+                print(f"❌ No se encontraron documentos para: '{comando}'")
+                        
+            elif len(resultados) == 1:
+                print(f"✅ 1 resultado encontrado. Abriendo automáticamente...")
+                motor.abrir_archivo(resultados[0]["ruta"])
+                        
+            else:
+                opciones = [f"📄 {r['titulo']}  ({r['ruta']})" for r in resultados]
+                opciones.append("❌ Cancelar")
+                        
+                eleccion = questionary.select(
+                    f"Se encontraron {len(resultados)} resultados. Selecciona uno:",
+                    choices=opciones
+                ).ask()
+                        
+                if eleccion and eleccion != "❌ Cancelar":
+                    indice_elegido = opciones.index(eleccion)
+                    motor.abrir_archivo(resultados[indice_elegido]["ruta"])
+            continue
+
         # --- MODO INDEXAR ---
         if comando.lower().startswith("indexar "):
             ruta = comando[8:].strip(' "') # Recorta la palabra "indexar " y las comillas
