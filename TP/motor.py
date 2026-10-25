@@ -215,7 +215,18 @@ class SegundoCerebro:
         del apps[ext_limpia]
         self.guardar_config()
         return True, f"Se quitó la aplicación predeterminada para '{ext_limpia}'."
-
+    
+    def eliminar_directorio_indice(self, ruta):
+        """Elimina un path de indexación del config si existe."""
+        with self._lock_config:
+            directorios = self.config.get("directorios", [])
+            if ruta in directorios:
+                directorios.remove(ruta)
+                self.config["directorios"] = directorios
+                self.guardar_config()
+                return True, f"Directorio de indexación eliminado: {ruta}"
+            return False, f"El path no existe en la configuración: {ruta}"
+    
     def iniciar_hilo_background(self):
         def correr_schedule():
             while True:
