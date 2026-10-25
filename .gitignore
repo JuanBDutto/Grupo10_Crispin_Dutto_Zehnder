@@ -5,7 +5,7 @@ venv/
 env/
 
 Archivos temporales y compilados de Python
-
+config.json
 pycache/
 *.pyc
 *.pyo
