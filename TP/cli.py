@@ -60,7 +60,6 @@ def iniciar_cli():
         # --- MODO INTERVALO "intervalo " ---
         if comando.lower().startswith("intervalo "):
             minutos_str = comando[9:].strip(' ')  # Recorta "intervalo " y espacios
-            print(minutos_str)
             exito, mensaje = motor.modificar_intervalo_minutos(minutos_str)
             if exito:
                 print(f"✅ {mensaje}")
