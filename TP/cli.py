@@ -4,8 +4,9 @@ from motor import SegundoCerebro
 def iniciar_cli():
     motor = SegundoCerebro()
     print("\n--- SEGUNDO CEREBRO (Modo Consola) ---")
-    print("💡 Para buscar: Escribe las palabras (ej: api rest)")
+    print("💡 Para buscar: Escribe las palabras (ej: api rest) o 'buscar palabra'")
     print("💡 Para indexar: Escribe indexar \"C:/Ruta/A/Carpeta\"")
+    print("💡 Para establecer intervalo: Escribe intervalo 5")
     print("Escribe 'salir' para cerrar.")
     
     while True:
@@ -55,6 +56,17 @@ def iniciar_cli():
             else:
                 print(f"❌ {mensaje}")
             continue # Vuelve al inicio del bucle para pedir otro comando
+
+        # --- MODO INTERVALO "intervalo " ---
+        if comando.lower().startswith("intervalo "):
+            minutos_str = comando[9:].strip(' ')  # Recorta "intervalo " y espacios
+            print(minutos_str)
+            exito, mensaje = motor.modificar_intervalo_minutos(minutos_str)
+            if exito:
+                print(f"✅ {mensaje}")
+            else:
+                print(f"❌ {mensaje}")
+            continue
 
         # --- MODO BÚSQUEDA (Por defecto) ---
         resultados = motor.buscar(comando)
