@@ -29,6 +29,17 @@ class SegundoCerebro:
         
     def cargar_config(self, path):
         self.config_path = os.path.abspath(path)
+        # Si no existe, crearlo a traves de una preconfiguración
+        if not os.path.exists(self.config_path):
+            preconfig = {
+                "directorios": [],
+                "apps_predeterminadas": {},
+                "extensiones_codigo": [".py", ".js", ".html", ".css", ".cpp", ".json"],
+                "intervalo_minutos": 5
+            }
+            with open(self.config_path, 'w', encoding='utf-8') as f:
+                json.dump(preconfig, f, indent=4, ensure_ascii=False)
+
         with open(self.config_path, 'r', encoding='utf-8') as f:
             self.config = json.load(f)
 
