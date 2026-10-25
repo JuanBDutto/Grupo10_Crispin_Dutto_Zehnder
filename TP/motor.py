@@ -226,7 +226,39 @@ class SegundoCerebro:
                 self.guardar_config()
                 return True, f"Directorio de indexación eliminado: {ruta}"
             return False, f"El path no existe en la configuración: {ruta}"
-    
+        
+    def modificar_intervalo_minutos(self, nuevo_intervalo):
+        """Modifica el intervalo_minutos en config.json.
+        
+        Solo acepta números enteros. Rejects valores flotantes con decimales.
+        Si el parámetro es un número entero válido mayor a 0, lo guarda y
+        reinicia el programa programado con el nuevo intervalo.
+        """
+        try:
+            # Intentar convertir directamente a entero
+            intervalo = int(nuevo_intervalo)
+            # Verificar que valores flotantes con decimales sean rechazados
+            # (int(5.5) = 5, por eso verificamos que el valor original no tenga partes decimales)
+            if isinstance(nuevo_intervalo, float) and nuevo_intervalo != intervalo:
+                return False, "El intervalo debe ser un número entero, no flotante"
+        except (ValueError, TypeError):
+            return False, "No pudo convertir el parámetro a número entero"
+        
+        if intervalo <= 0:
+            return False, "El intervalo debe ser mayor a 0"
+        
+        # Actualizar el valor en la configuración
+        self.config["intervalo_minutos"] = intervalo
+        self.guardar_config()
+        
+        # Reiniciar la programación con el nuevo intervalo
+        # Primero limpiamos los trabajos programados existentes
+        schedule.clear()
+        # Volvemos a programar con el nuevo intervalo
+        schedule.every(intervalo).minutes.do(self.ejecutar_indexacion)
+        
+        return True, f"Intervalo actualizado a {intervalo} minutos y programación reiniciada"
+
     def iniciar_hilo_background(self):
         def correr_schedule():
             while True:
