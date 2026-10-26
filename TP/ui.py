@@ -106,6 +106,65 @@ class DialogoApps(QDialog):
                 QMessageBox.warning(self, "Error", mensaje)
         self.cargar_tabla()
 
+class DialogoDirectorios(QDialog):
+    def __init__(self, motor, parent=None):
+        super().__init__(parent)
+        self.motor = motor
+        self.setWindowTitle("Directorios Indexados")
+        self.resize(600, 320)
+
+        layout = QVBoxLayout(self)
+
+        self.tabla = QTableWidget(0, 1)
+        self.tabla.setHorizontalHeaderLabels(["Ruta del Directorio"])
+        self.tabla.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.tabla.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tabla.horizontalHeader().setStretchLastSection(True)
+        layout.addWidget(self.tabla)
+
+        layout_botones = QHBoxLayout()
+        
+        self.btn_eliminar = QPushButton("🗑️ Eliminar y Desindexar")
+        self.btn_eliminar.clicked.connect(self.eliminar_directorio)
+        layout_botones.addWidget(self.btn_eliminar)
+
+        layout_botones.addStretch()
+
+        self.btn_cerrar = QPushButton("Cerrar")
+        self.btn_cerrar.clicked.connect(self.accept)
+        layout_botones.addWidget(self.btn_cerrar)
+
+        layout.addLayout(layout_botones)
+        self.cargar_tabla()
+
+    def cargar_tabla(self):
+        directorios = self.motor.config.get("directorios", [])
+        self.tabla.setRowCount(0)
+        for fila, ruta in enumerate(directorios):
+            self.tabla.insertRow(fila)
+            self.tabla.setItem(fila, 0, QTableWidgetItem(ruta))
+
+    def eliminar_directorio(self):
+        filas = self.tabla.selectionModel().selectedRows()
+        if not filas:
+            QMessageBox.warning(self, "Aviso", "Selecciona al menos un directorio para eliminar.")
+            return
+
+        self.btn_eliminar.setText("⏳ Desindexando...")
+        self.btn_eliminar.setEnabled(False)
+        QApplication.processEvents()
+
+        for f in filas:
+            ruta = self.tabla.item(f.row(), 0).text()
+            exito, mensaje = self.motor.eliminar_directorio_indice(ruta)
+            if exito:
+                QMessageBox.information(self, "Directorio Eliminado", mensaje)
+            else:
+                QMessageBox.warning(self, "Error", mensaje)
+
+        self.btn_eliminar.setText("🗑️ Eliminar y Desindexar")
+        self.btn_eliminar.setEnabled(True)
+        self.cargar_tabla()
 
 class InterfazCerebro(QMainWindow):
     def __init__(self):
@@ -144,6 +203,10 @@ class InterfazCerebro(QMainWindow):
         self.btn_apps.clicked.connect(self.abrir_dialogo_apps)
         layout_busqueda.addWidget(self.btn_apps)
 
+        self.btn_intervalo = QPushButton("⏱ Intervalo")
+        self.btn_intervalo.clicked.connect(self.cambiar_intervalo)
+        layout_busqueda.addWidget(self.btn_intervalo)
+
         layout_principal.addLayout(layout_busqueda)
 
         # --- PANEL SECUNDARIO: AGREGAR DIRECTORIO ---
@@ -157,6 +220,10 @@ class InterfazCerebro(QMainWindow):
         self.btn_agregar_dir = QPushButton("➕ Indexar Nuevo Directorio")
         self.btn_agregar_dir.clicked.connect(self.agregar_directorio)
         layout_directorios.addWidget(self.btn_agregar_dir)
+
+        self.btn_gestionar_dirs = QPushButton("📂 Ver / Eliminar Directorios")
+        self.btn_gestionar_dirs.clicked.connect(self.abrir_dialogo_directorios)
+        layout_directorios.addWidget(self.btn_gestionar_dirs)
 
         layout_principal.addLayout(layout_directorios)
 
@@ -215,6 +282,29 @@ class InterfazCerebro(QMainWindow):
     def abrir_dialogo_apps(self):
         dialogo = DialogoApps(self.motor, self)
         dialogo.exec()
+
+    def abrir_dialogo_directorios(self):
+        dialogo = DialogoDirectorios(self.motor, self)
+        dialogo.exec()
+
+    def cambiar_intervalo(self):
+        intervalo_actual = self.motor.config.get("intervalo_minutos", 5)
+        nuevo_valor, ok = QInputDialog.getInt(
+            self,
+            "Intervalo de Indexación",
+            "Indexar automáticamente cada (minutos):",
+            value=intervalo_actual,
+            min=1,
+            max=1440
+        )
+        if not ok:
+            return
+
+        exito, mensaje = self.motor.modificar_intervalo_minutos(nuevo_valor)
+        if exito:
+            QMessageBox.information(self, "Intervalo Actualizado", mensaje)
+        else:
+            QMessageBox.warning(self, "Error", mensaje)
 
     def abrir_archivo_con(self, ruta):
         ruta_real = ruta.split("?parte=")[0]
