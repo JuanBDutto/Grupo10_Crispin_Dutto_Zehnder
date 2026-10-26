@@ -217,15 +217,43 @@ class SegundoCerebro:
         return True, f"Se quitó la aplicación predeterminada para '{ext_limpia}'."
     
     def eliminar_directorio_indice(self, ruta):
-        """Elimina un path de indexación del config si existe."""
-        with self._lock_config:
-            directorios = self.config.get("directorios", [])
-            if ruta in directorios:
-                directorios.remove(ruta)
-                self.config["directorios"] = directorios
-                self.guardar_config()
-                return True, f"Directorio de indexación eliminado: {ruta}"
-            return False, f"El path no existe en la configuración: {ruta}"
+        """Elimina un directorio del config y borra sus archivos del índice de Whoosh."""
+        ruta_normalizada = ruta.replace("\\", "/")
+        directorios = self.config.get("directorios", [])
+
+        if ruta_normalizada not in directorios:
+            return False, f"El path no existe en la configuración: {ruta_normalizada}"
+
+        # 1. Quitar del config y guardar (guardar_config ya usa self._lock_config)
+        directorios.remove(ruta_normalizada)
+        self.config["directorios"] = directorios
+        self.guardar_config()
+
+        # 2. Desindexar en Whoosh todos los archivos que estén dentro de ese directorio
+        ruta_base = os.path.normcase(os.path.abspath(ruta_normalizada))
+        eliminados = 0
+
+        writer = self.indice.writer()
+        with self.indice.searcher() as searcher:
+            for campos in searcher.all_stored_fields():
+                ruta_indexada = campos.get("ruta")
+                if not ruta_indexada:
+                    continue
+                ruta_real = ruta_indexada.split("?parte=")[0]
+                ruta_real_norm = os.path.normcase(os.path.abspath(ruta_real))
+
+                # Verifica si el archivo pertenece al directorio eliminado
+                try:
+                    if os.path.commonpath([ruta_base, ruta_real_norm]) == ruta_base:
+                        writer.delete_by_term("ruta", ruta_indexada)
+                        eliminados += 1
+                        print(f"🗑️ Desindexado: {ruta_indexada}")
+                except ValueError:
+                    # Ocurre en Windows si las rutas están en discos distintos (ej. C: y D:)
+                    continue
+
+        writer.commit()
+        return True, f"Directorio eliminado ({eliminados} documentos desindexados): {ruta_normalizada}"
         
     def modificar_intervalo_minutos(self, nuevo_intervalo):
         """Modifica el intervalo_minutos en config.json.

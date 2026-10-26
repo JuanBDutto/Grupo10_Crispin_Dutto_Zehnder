@@ -7,6 +7,7 @@ def iniciar_cli():
     print("💡 Para buscar: Escribe las palabras (ej: api rest) o 'buscar palabra'")
     print("💡 Para indexar: Escribe indexar \"C:/Ruta/A/Carpeta\"")
     print("💡 Para establecer intervalo: Escribe intervalo 5")
+    print("💡 Para desindexar: Escribe desindexar \"C:/Ruta/A/Carpeta\"")
     print("Escribe 'salir' para cerrar.")
     
     while True:
@@ -50,6 +51,19 @@ def iniciar_cli():
             print("Por favor, espera...")
             
             exito, mensaje = motor.agregar_e_indexar_ruta(ruta)
+            
+            if exito:
+                print(f"✅ {mensaje}")
+            else:
+                print(f"❌ {mensaje}")
+            continue # Vuelve al inicio del bucle para pedir otro comando
+
+        # --- MODO DESINDEXAR ---
+        if comando.lower().startswith("desindexar "):
+            ruta = comando[11:].strip(' "') # Recorta la palabra "desindexar " y las comillas
+            print(f"\n⏳ Desindexando directorio: {ruta}")
+            
+            exito, mensaje = motor.eliminar_directorio_indice(ruta)
             
             if exito:
                 print(f"✅ {mensaje}")
