@@ -1,11 +1,50 @@
 import questionary
 from motor import SegundoCerebro
 
+def separar_filtro(texto):
+    """Extrae un token 'ext:.py' de la consulta. Devuelve (consulta, filtro)."""
+    palabras, filtro = [], "Todos"
+    for p in texto.split():
+        if p.lower().startswith("ext:"):
+            ext = p[4:].strip().lower()
+            if ext:
+                filtro = ext if ext.startswith(".") else "." + ext
+        else:
+            palabras.append(p)
+    return " ".join(palabras), filtro
+
+
+def buscar_y_abrir(motor, texto):
+    consulta, filtro = separar_filtro(texto)
+    if not consulta:
+        print("⚠️ Escribe al menos una palabra a buscar.")
+        return
+
+    resultados = motor.buscar(consulta, filtro_ext=filtro)
+    etiqueta_filtro = f" (filtro: {filtro})" if filtro != "Todos" else ""
+
+    if not resultados:
+        print(f"❌ No se encontraron documentos para: '{consulta}'{etiqueta_filtro}")
+    elif len(resultados) == 1:
+        print("✅ 1 resultado encontrado. Abriendo automáticamente...")
+        motor.abrir_archivo(resultados[0]["ruta"])
+    else:
+        opciones = [f"📄 {r['titulo']}  ({r['ruta']})" for r in resultados]
+        opciones.append("❌ Cancelar")
+        eleccion = questionary.select(
+            f"Se encontraron {len(resultados)} resultados{etiqueta_filtro}. Selecciona uno:",
+            choices=opciones
+        ).ask()
+        if eleccion and eleccion != "❌ Cancelar":
+            motor.abrir_archivo(resultados[opciones.index(eleccion)]["ruta"])
+
 def iniciar_cli():
     motor = SegundoCerebro()
     print("\n--- SEGUNDO CEREBRO (Modo Consola) ---")
     print("💡 Para buscar: Escribe las palabras (ej: api rest) o buscar palabra")
+    print("💡 Para filtrar por tipo: agrega ext:.py (ej: api rest ext:.pdf)")
     print("💡 Para indexar: Escribe indexar \"C:/Ruta/A/Carpeta\"")
+    print("💡 Para forzar la reindexación: Escribe reindexar")
     print("💡 Para establecer intervalo: Escribe intervalo 5")
     print("💡 Para desindexar: Escribe desindexar \"C:/Ruta/A/Carpeta\"")
     print("💡 Para ver las aplicaciones predeterminadas: Escribe predeterminado")
@@ -23,28 +62,7 @@ def iniciar_cli():
 
         # --- MODO BÚSQUEDA "buscar " ---
         if comando.lower().startswith("buscar "):
-            termino_busqueda = comando[7:]  # Recorta "buscar "
-            resultados = motor.buscar(termino_busqueda)
-            print(termino_busqueda)
-            if len(resultados) == 0:
-                print(f"❌ No se encontraron documentos para: '{comando}'")
-                        
-            elif len(resultados) == 1:
-                print(f"✅ 1 resultado encontrado. Abriendo automáticamente...")
-                motor.abrir_archivo(resultados[0]["ruta"])
-                        
-            else:
-                opciones = [f"📄 {r['titulo']}  ({r['ruta']})" for r in resultados]
-                opciones.append("❌ Cancelar")
-                        
-                eleccion = questionary.select(
-                    f"Se encontraron {len(resultados)} resultados. Selecciona uno:",
-                    choices=opciones
-                ).ask()
-                        
-                if eleccion and eleccion != "❌ Cancelar":
-                    indice_elegido = opciones.index(eleccion)
-                    motor.abrir_archivo(resultados[indice_elegido]["ruta"])
+            buscar_y_abrir(motor, comando[7:])
             continue
 
         # --- MODO INDEXAR ---
@@ -59,7 +77,11 @@ def iniciar_cli():
                 print(f"✅ {mensaje}")
             else:
                 print(f"❌ {mensaje}")
-            continue # Vuelve al inicio del bucle para pedir otro comando
+            continue # Vuelve al inicio del bucle para pedir otro comando{}
+
+        if comando.lower() == "reindexar":
+            motor.forzar_reindexacion()
+            continue
 
         # --- MODO DESINDEXAR ---
         if comando.lower().startswith("desindexar "):
@@ -113,7 +135,7 @@ def iniciar_cli():
 
         # --- MODO INTERVALO "intervalo " ---
         if comando.lower().startswith("intervalo "):
-            minutos_str = comando[9:].strip(' ')  # Recorta "intervalo " y espacios
+            minutos_str = comando[10:].strip()  # Recorta "intervalo " y espacios
             exito, mensaje = motor.modificar_intervalo_minutos(minutos_str)
             if exito:
                 print(f"✅ {mensaje}")
@@ -121,28 +143,11 @@ def iniciar_cli():
                 print(f"❌ {mensaje}")
             continue
 
+
         # --- MODO BÚSQUEDA (Por defecto) ---
-        resultados = motor.buscar(comando)
-        
-        if len(resultados) == 0:
-            print(f"❌ No se encontraron documentos para: '{comando}'")
-            
-        elif len(resultados) == 1:
-            print(f"✅ 1 resultado encontrado. Abriendo automáticamente...")
-            motor.abrir_archivo(resultados[0]["ruta"])
-            
-        else:
-            opciones = [f"📄 {r['titulo']}  ({r['ruta']})" for r in resultados]
-            opciones.append("❌ Cancelar")
-            
-            eleccion = questionary.select(
-                f"Se encontraron {len(resultados)} resultados. Selecciona uno:",
-                choices=opciones
-            ).ask()
-            
-            if eleccion and eleccion != "❌ Cancelar":
-                indice_elegido = opciones.index(eleccion)
-                motor.abrir_archivo(resultados[indice_elegido]["ruta"])
+        buscar_y_abrir(motor, comando)
+        continue
+
 
 if __name__ == "__main__":
     iniciar_cli()

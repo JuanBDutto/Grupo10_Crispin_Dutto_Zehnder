@@ -8,7 +8,7 @@ import platform
 import schedule
 
 # Importamos las funciones del nuevo módulo
-from extractores import extraer_pdf, extraer_docx, extraer_texto_plano
+from extractores import extraer_pdf, extraer_docx
 
 from whoosh.index import create_in, open_dir, exists_in
 from whoosh.fields import Schema, TEXT, ID, STORED
